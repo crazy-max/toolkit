@@ -1,0 +1,119 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.uploadToBlobStorage = uploadToBlobStorage;
+const storage_blob_1 = require("@azure/storage-blob");
+const config_1 = require("../shared/config");
+const core = __importStar(require("@actions/core"));
+const crypto = __importStar(require("crypto"));
+const stream = __importStar(require("stream"));
+const errors_1 = require("../shared/errors");
+function uploadToBlobStorage(authenticatedUploadURL, uploadStream, contentType) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let uploadByteCount = 0;
+        let lastProgressTime = Date.now();
+        const abortController = new AbortController();
+        const chunkTimer = (interval) => __awaiter(this, void 0, void 0, function* () {
+            return new Promise((resolve, reject) => {
+                const timer = setInterval(() => {
+                    if (Date.now() - lastProgressTime > interval) {
+                        reject(new Error('Upload progress stalled.'));
+                    }
+                }, interval);
+                abortController.signal.addEventListener('abort', () => {
+                    clearInterval(timer);
+                    resolve();
+                });
+            });
+        });
+        const maxConcurrency = (0, config_1.getConcurrency)();
+        const bufferSize = (0, config_1.getUploadChunkSize)();
+        const blobClient = new storage_blob_1.BlobClient(authenticatedUploadURL);
+        const blockBlobClient = blobClient.getBlockBlobClient();
+        core.debug(`Uploading artifact to blob storage with maxConcurrency: ${maxConcurrency}, bufferSize: ${bufferSize}, contentType: ${contentType}`);
+        const uploadCallback = (progress) => {
+            core.info(`Uploaded bytes ${progress.loadedBytes}`);
+            uploadByteCount = progress.loadedBytes;
+            lastProgressTime = Date.now();
+        };
+        const options = {
+            blobHTTPHeaders: { blobContentType: contentType },
+            onProgress: uploadCallback,
+            abortSignal: abortController.signal
+        };
+        let sha256Hash = undefined;
+        const blobUploadStream = new stream.PassThrough();
+        const hashStream = crypto.createHash('sha256');
+        uploadStream.pipe(blobUploadStream); // This stream is used for the upload
+        uploadStream.pipe(hashStream).setEncoding('hex'); // This stream is used to compute a hash of the content for integrity check
+        core.info('Beginning upload of artifact content to blob storage');
+        try {
+            yield Promise.race([
+                blockBlobClient.uploadStream(blobUploadStream, bufferSize, maxConcurrency, options),
+                chunkTimer((0, config_1.getUploadChunkTimeout)())
+            ]);
+        }
+        catch (error) {
+            if (errors_1.NetworkError.isNetworkErrorCode(error === null || error === void 0 ? void 0 : error.code)) {
+                throw new errors_1.NetworkError(error === null || error === void 0 ? void 0 : error.code);
+            }
+            throw error;
+        }
+        finally {
+            abortController.abort();
+        }
+        core.info('Finished uploading artifact content to blob storage!');
+        hashStream.end();
+        sha256Hash = hashStream.read();
+        core.info(`SHA256 digest of uploaded artifact is ${sha256Hash}`);
+        if (uploadByteCount === 0) {
+            core.warning(`No data was uploaded to blob storage. Reported upload byte count is 0.`);
+        }
+        return {
+            uploadSize: uploadByteCount,
+            sha256Hash
+        };
+    });
+}
+//# sourceMappingURL=blob-upload.js.map
