@@ -53,6 +53,12 @@ export interface UploadArtifactOptions {
      * When using this option, the artifact will not be compressed.
      */
     skipArchive?: boolean;
+    /**
+     * The content type of the artifact being uploaded. If not specified, it will
+     * default to 'application/zip' for zipped artifacts. If skipArchive is true,
+     * it will default to the mime type of the file being uploaded.
+     */
+    contentType?: string;
 }
 /**
  * Response from the server when getting an artifact

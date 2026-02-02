@@ -55,7 +55,7 @@ export async function uploadArtifact(
       zipSpecification.flatMap(s => (s.sourcePath ? [s.sourcePath] : []))
     )
   }
-  const contentType = getMimeType(artifactFileName)
+  const contentType = options?.contentType ?? getMimeType(artifactFileName)
 
   // get the IDs needed for the artifact creation
   const backendIds = getBackendIdsFromToken()

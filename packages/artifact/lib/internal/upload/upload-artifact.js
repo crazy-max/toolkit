@@ -58,6 +58,7 @@ const errors_1 = require("../shared/errors");
 const types_1 = require("./types");
 function uploadArtifact(name, files, rootDirectory, options) {
     return __awaiter(this, void 0, void 0, function* () {
+        var _a;
         let artifactFileName = `${name}.zip`;
         if (options === null || options === void 0 ? void 0 : options.skipArchive) {
             if (files.length > 1) {
@@ -72,7 +73,7 @@ function uploadArtifact(name, files, rootDirectory, options) {
         if (!(options === null || options === void 0 ? void 0 : options.skipArchive) && zipSpecification.length === 0) {
             throw new errors_1.FilesNotFoundError(zipSpecification.flatMap(s => (s.sourcePath ? [s.sourcePath] : [])));
         }
-        const contentType = (0, types_1.getMimeType)(artifactFileName);
+        const contentType = (_a = options === null || options === void 0 ? void 0 : options.contentType) !== null && _a !== void 0 ? _a : (0, types_1.getMimeType)(artifactFileName);
         // get the IDs needed for the artifact creation
         const backendIds = (0, util_1.getBackendIdsFromToken)();
         // create the artifact client
